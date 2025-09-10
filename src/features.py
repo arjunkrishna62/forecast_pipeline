@@ -1,23 +1,22 @@
-def clean_data(df):
-    df = df.dropna(subset=['units_produced', 'power_kwh'])  # Or impute: df.fillna(method='ffill')
-    # Outliers: clip
-    for col in ['units_produced', 'power_kwh', 'downtime_hours']:
-        if col in df.columns:
-            lower, upper = df[col].quantile([0.01, 0.99])
-            df[col] = np.clip(df[col], lower, upper)
+import numpy as np
+import pandas as pd
+
+def add_date_features(df, date_col='date'):
+    df['dayofweek'] = df[date_col].dt.dayofweek
+    df['is_weekend'] = df['dayofweek'].isin([5,6]).astype(int)
+    df['day'] = df[date_col].dt.day
+    df['month'] = df[date_col].dt.month
     return df
 
-def engineer_features(df):
-    df = df.sort_values(['site_id', 'date'])
-    # Date features
-    df['dayofweek'] = df['date'].dt.dayofweek
-    df['month'] = df['date'].dt.month
-    # Lags and rolling
-    for lag in [1, 7]:
-        df[f'units_produced_lag{lag}'] = df.groupby('site_id')['units_produced'].shift(lag)
-        df[f'power_kwh_lag{lag}'] = df.groupby('site_id')['power_kwh'].shift(lag)
-    df['units_rolling7'] = df.groupby('site_id')['units_produced'].rolling(7).mean().reset_index(0, drop=True)
-    # Normalize by capacity if in meta
-    if 'capacity_units' in df.columns:
-        df['units_normalized'] = df['units_produced'] / df['capacity_units']
-    return df.fillna(0)  # Handle NaNs from shifts
+def add_lag_roll(df, site_col='site_id', target_cols=['units_produced','power_kwh']):
+    df = df.sort_values([site_col,'date']).copy()
+    for t in target_cols:
+        for lag in [1,2,3,7,14]:
+            df[f'{t}_lag{lag}'] = df.groupby(site_col)[t].shift(lag)
+        df[f'{t}_rmean7'] = df.groupby(site_col)[t].transform(lambda s: s.rolling(7, min_periods=1).mean())
+        df[f'{t}_rstd7'] = df.groupby(site_col)[t].transform(lambda s: s.rolling(7, min_periods=1).std())
+        df[f'{t}_pctchg1'] = df.groupby(site_col)[t].pct_change(1)
+    df['kwh_per_unit'] = df['power_kwh'] / (df['units_produced'].replace(0, np.nan))
+    df['is_zero_units'] = (df['units_produced'] == 0).astype(int)
+    df['is_zero_power'] = (df['power_kwh'] == 0).astype(int)
+    return df

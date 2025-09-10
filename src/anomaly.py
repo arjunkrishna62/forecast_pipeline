@@ -1,5 +1,6 @@
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+import numpy as np
 
 def detect_anomalies(df):
     features = ['downtime_hours', 'units_produced', 'power_kwh']  # Add more
